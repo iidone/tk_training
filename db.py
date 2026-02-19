@@ -23,10 +23,22 @@ class Database():
     def fetch_all(self, query, params=None):
         try:
             self.cur.execute(query, params)
-            return self.cur.fetchall(   )
+            return self.cur.fetchall()
         except Exception as e:
-            print(f"error: {str(e)}")
+            print(f"fetchall error : {str(e)}")
             return []
+
+        
+    
+    def execute_query(self, query, params=None):
+        try:
+            self.cur.execute(query, params)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            self.conn.rollback()
+            print(f"execute error: {str(e)}")
+            return False
 
 
     def db_close(self):
