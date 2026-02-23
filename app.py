@@ -9,7 +9,7 @@ class App(tk.Tk):
     def __init__(self, db):
         super().__init__()
         self.db = db
-        self.title("App")
+        self.title('ООО "Обувь"')
         self.geometry('700x300+400+200')
         self.resizable = (False, False)
 
