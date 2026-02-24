@@ -1,0 +1,3 @@
+# tkinter (TCL python)
+# psycopg2-binary / psycopg2_binary --only-binary :app:
+# pillow
