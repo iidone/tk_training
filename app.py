@@ -193,10 +193,6 @@ class App(tk.Tk):
             orders_menu = tk.Menu(menubar, tearoff=0)
             menubar.add_cascade(label="Заказы", menu=orders_menu)
             orders_menu.add_command(label="Просмотр заказов", command=self.show_orders)
-            if self.role == "Администратор":
-                orders_menu.add_command(label="Добавить заказ", command=self.add_order)
-                orders_menu.add_command(label="Редактировать заказ", command=self.edit_order)
-                orders_menu.add_command(label="Удалить заказ", command=self.delete_order)
         
         menubar.add_command(label="Выход", command=self.quit)
         
