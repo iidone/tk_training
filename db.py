@@ -489,25 +489,205 @@ class Database():
 
     def get_all_products(self):
         query = """
-            SELECT p.id, pn.name as product_name, p.price, p.quantity, p.discount 
+            SELECT p.id, pn.name as product_name, p.price, p.quantity, p.discount,
+                   COALESCE(c.name, 'Не указано') as category_name,
+                   COALESCE(s.name, 'Не указано') as supplier_name,
+                   COALESCE(m.name, 'Не указано') as manufacturer_name
             FROM products p
             LEFT JOIN product_name pn ON p.product_name_id = pn.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN suppliers s ON p.supplier_id = s.id
+            LEFT JOIN manufacturers m ON p.manufacturer_id = m.id
             ORDER BY p.id
         """
         return self.fetch_all(query)
     
 
 
-    def get_orders(self):
+    def get_all_orders(self):
         query = """
-            SELECT o.id, o.date_of_create, o.date_of_delivery, o.get_code, 
-                   os.status, u.username, o.address
+            SELECT o.id, 
+                   o.date_of_create,
+                   o.date_of_delivery,
+                   o.get_code,
+                   os.status,
+                   u.username,
+                   a.address,
+                   a.index,
+                   oa.article_name1,
+                   oa.article_quantity1,
+                   oa.article_name2,
+                   oa.article_quantity2
             FROM orders o
             LEFT JOIN order_status os ON o.order_status_id = os.id
             LEFT JOIN users u ON o.user_id = u.id
+            LEFT JOIN addresses a ON o.address = a.id
+            LEFT JOIN order_articles oa ON o.articles_id = oa.id
             ORDER BY o.id
         """
         return self.fetch_all(query)
+    
+    def get_order_by_id(self, order_id):
+       query = """
+           SELECT o.id, 
+                  o.date_of_create,
+                  o.date_of_delivery,
+                  o.get_code,
+                  os.id as status_id,
+                  os.status,
+                  o.user_id,
+                  u.fio as client_name,
+                  o.address as address_id,
+                  a.index as address_index,
+                  a.address,
+                  o.articles_id,
+                  oa.article_name1,
+                  oa.article_quantity1,
+                  oa.article_name2,
+                  oa.article_quantity2
+           FROM orders o
+           LEFT JOIN order_status os ON o.order_status_id = os.id
+           LEFT JOIN users u ON o.user_id = u.id
+           LEFT JOIN addresses a ON o.address = a.id
+           LEFT JOIN order_articles oa ON o.articles_id = oa.id
+           WHERE o.id = %s
+       """
+       try:
+           self.cur.execute(query, (order_id,))
+           result = self.cur.fetchone()
+
+           if result:
+               return {
+                   'id': result[0],
+                   'date_create': result[1],
+                   'date_delivery': result[2],
+                   'get_code': result[3],
+                   'status_id': result[4],
+                   'status': result[5],
+                   'user_id': result[6],
+                   'client_name': result[7] or '',
+                   'address_id': result[8],
+                   'address_index': result[9],
+                   'address': result[10],
+                   'articles_id': result[11],
+                   'article_name1': result[12],
+                   'article_quantity1': result[13],
+                   'article_name2': result[14],
+                   'article_quantity2': result[15]
+               }
+           return None
+       except Exception as e:
+           print(f"get_order_by_id error: {str(e)}")
+           return None
+
+    def add_order_articles(self, article_name1, article_quantity1, article_name2, article_quantity2):
+        query = """
+            INSERT INTO order_articles 
+            (article_name1, article_quantity1, article_name2, article_quantity2) 
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """
+        try:
+            self.cur.execute(query, (article_name1, article_quantity1, article_name2, article_quantity2))
+            self.conn.commit()
+            return self.cur.fetchone()[0]
+        except Exception as e:
+            self.conn.rollback()
+            print(f"add_order_articles error: {str(e)}")
+            return None
+
+    def update_order_articles(self, articles_id, article_name1, article_quantity1, article_name2, article_quantity2):
+        query = """
+            UPDATE order_articles 
+            SET article_name1=%s, article_quantity1=%s, 
+                article_name2=%s, article_quantity2=%s 
+            WHERE id=%s
+        """
+        return self.execute_query(query, (article_name1, article_quantity1, article_name2, article_quantity2, articles_id))
+
+    def add_order(self, date_create, date_delivery, address_id, user_id, get_code, status_id, 
+                  article_name1, article_quantity1, article_name2, article_quantity2):
+        articles_id = self.add_order_articles(article_name1, article_quantity1, article_name2, article_quantity2)
+
+        if not articles_id:
+            return False
+
+        query = """
+            INSERT INTO orders 
+            (articles_id, date_of_create, date_of_delivery, address, user_id, get_code, order_status_id) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        return self.execute_query(query, (articles_id, date_create, date_delivery, address_id, user_id, get_code, status_id))
+
+    def update_order(self, order_id, date_create, date_delivery, address_id, user_id, get_code, status_id,
+                     article_name1, article_quantity1, article_name2, article_quantity2, articles_id):
+        if not self.update_order_articles(articles_id, article_name1, article_quantity1, article_name2, article_quantity2):
+            return False
+
+        query = """
+            UPDATE orders 
+            SET date_of_create=%s, date_of_delivery=%s, address=%s, 
+                user_id=%s, get_code=%s, order_status_id=%s 
+            WHERE id=%s
+        """
+        return self.execute_query(query, (date_create, date_delivery, address_id, user_id, get_code, status_id, order_id))
+
+    def delete_order(self, order_id):
+        query = "SELECT articles_id FROM orders WHERE id = %s"
+        result = self.fetch_all(query, (order_id,))
+
+        if result and result[0][0]:
+            articles_id = result[0][0]
+            self.execute_query("DELETE FROM order_articles WHERE id = %s", (articles_id,))
+
+        return self.execute_query("DELETE FROM orders WHERE id = %s", (order_id,))
+    
+    def get_users(self):
+        query = "SELECT id, username, fio FROM users ORDER BY fio NULLS LAST"
+        return self.fetch_all(query)
+
+    def get_order_statuses(self):
+        query = "SELECT id, status FROM order_status ORDER BY id"
+        return self.fetch_all(query)
+
+    def get_addresses(self):
+        query = "SELECT id, index, address FROM addresses ORDER BY id"
+        return self.fetch_all(query)
+
+
+    def get_articles(self):
+        query = """
+            SELECT p.article, pn.name 
+            FROM products p
+            LEFT JOIN product_name pn ON p.product_name_id = pn.id
+            ORDER BY p.article
+        """
+        return self.fetch_all(query)
+
+    def add_order_articles(self, article_name1, article_quantity1, article_name2, article_quantity2):
+        query = """
+            INSERT INTO order_articles 
+            (article_name1, article_quantity1, article_name2, article_quantity2) 
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """
+        try:
+            self.cur.execute(query, (article_name1, article_quantity1, article_name2, article_quantity2))
+            self.conn.commit()
+            return self.cur.fetchone()[0]
+        except Exception as e:
+            self.conn.rollback()
+            print(f"add_order_articles error: {str(e)}")
+            return None
+
+    def update_order_articles(self, articles_id, article_name1, article_quantity1, article_name2, article_quantity2):
+        query = """
+            UPDATE order_articles 
+            SET article_name1=%s, article_quantity1=%s, 
+                article_name2=%s, article_quantity2=%s 
+            WHERE id=%s
+        """
+        return self.execute_query(query, (article_name1, article_quantity1, article_name2, article_quantity2, articles_id))
 
 
     def add_product(self, name, price, quantity, article, discount=0):
@@ -555,9 +735,15 @@ class Database():
 
     def search_products(self, search_text, category=None, sort_by=None, sort_order='ASC'):
         query = """
-            SELECT p.id, pn.name as product_name, p.price, p.quantity, p.discount 
+            SELECT p.id, pn.name as product_name, p.price, p.quantity, p.discount,
+                   COALESCE(c.name, 'Не указано') as category_name,
+                   COALESCE(s.name, 'Не указано') as supplier_name,
+                   COALESCE(m.name, 'Не указано') as manufacturer_name
             FROM products p
             LEFT JOIN product_name pn ON p.product_name_id = pn.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN suppliers s ON p.supplier_id = s.id
+            LEFT JOIN manufacturers m ON p.manufacturer_id = m.id
             WHERE 1=1
         """
         params = []
@@ -582,6 +768,10 @@ class Database():
                 query += f" ORDER BY {valid_sort_columns[sort_by]}"
                 if sort_order == 'DESC':
                     query += " DESC"
+            else:
+                query += " ORDER BY p.id"
+        else:
+            query += " ORDER BY p.id"
         
         return self.fetch_all(query, tuple(params) if params else None)
 
@@ -589,9 +779,15 @@ class Database():
     def get_product_by_id(self, product_id):
         query = """
             SELECT p.id, pn.name as product_name, p.price, p.article, 
-                   p.discount, p.quantity, p.photo_url, p.description
+                   p.discount, p.quantity, p.photo_url, p.description,
+                   COALESCE(c.name, 'Не указано') as category_name,
+                   COALESCE(s.name, 'Не указано') as supplier_name,
+                   COALESCE(m.name, 'Не указано') as manufacturer_name
             FROM products p
             LEFT JOIN product_name pn ON p.product_name_id = pn.id
+            LEFT JOIN categories c ON p.category_id = c.id
+            LEFT JOIN suppliers s ON p.supplier_id = s.id
+            LEFT JOIN manufacturers m ON p.manufacturer_id = m.id
             WHERE p.id = %s
         """
         try:
@@ -607,7 +803,10 @@ class Database():
                     'discount': result[4],
                     'quantity': result[5],
                     'photo_url': result[6],
-                    'description': result[7]
+                    'description': result[7],
+                    'category_name': result[8],
+                    'supplier_name': result[9],
+                    'manufacturer_name': result[10]
                 }
             return None
         except Exception as e:

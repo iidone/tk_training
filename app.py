@@ -11,9 +11,7 @@ import sys
 
 
 def get_resource_path(relative_path):
-    """Get absolute path to resource, works for dev and for PyInstaller."""
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
@@ -204,7 +202,7 @@ class App(tk.Tk):
         if self.role in ["Менеджер", "Администратор"]:
             orders_menu = tk.Menu(menubar, tearoff=0)
             menubar.add_cascade(label="Заказы", menu=orders_menu)
-            orders_menu.add_command(label="Просмотр заказов", command=self.show_orders)
+            orders_menu.add_command(label="Управление заказами", command=self.show_orders)
         
         menubar.add_command(label="Выход", command=self.quit)
         
@@ -335,87 +333,98 @@ class App(tk.Tk):
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.cards_per_row = 3
-        self.card_width = 260
-        self.card_height = 320
+        self.cards_per_row = 1
+        self.card_width = 820
+        self.card_height = 210
     
     
     def create_product_card(self, parent, product_data, row, col):
-        product_id, product_name, price, quantity, discount = product_data
-        
+        product_id = product_data[0]
+        product_name = product_data[1]
+        price = product_data[2]
+        quantity = product_data[3]
+        discount = product_data[4]
+        product_info = self.db.get_product_by_id(product_id) or {}
+
         card_frame = tk.Frame(
             parent, 
             bg=COLOR_SECONDARY_BG, 
             width=self.card_width, 
             height=self.card_height,
-            relief=tk.RAISED,
-            borderwidth=2
+            relief=tk.SOLID,
+            borderwidth=1
         )
-        card_frame.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+        card_frame.grid(row=row, column=col, padx=10, pady=5, sticky="we")
         card_frame.pack_propagate(False)
-        
-        card_frame.grid_rowconfigure(0, weight=1)
-        
-        image_label = tk.Label(card_frame, bg=COLOR_MAIN_BG, width=240, height=180)
-        image_label.pack(padx=5, pady=5)
-        image_label.pack_propagate(False)
-        
-        product_info = self.db.get_product_by_id(product_id)
-        if product_info and product_info.get('photo_url'):
-            self.load_card_image(image_label, product_info.get('photo_url'))
-        else:
-            self.load_card_image(image_label, 'images/picture.png')
-        
-        info_frame = tk.Frame(card_frame, bg=COLOR_SECONDARY_BG)
-        info_frame.pack(fill=tk.X, padx=8, pady=5)
-        
-        name_label = tk.Label(
-            info_frame,
-            text=product_name if product_name else "Без названия",
-            font=FONT_MAIN,
+
+        photo_container = tk.Frame(card_frame, bg=COLOR_SECONDARY_BG, width=230)
+        photo_container.pack(side=tk.LEFT, fill=tk.BOTH, padx=5, pady=5)
+        photo_container.pack_propagate(False)
+
+        image_label = tk.Label(photo_container, bg="white", relief=tk.SOLID, borderwidth=1)
+        image_label.pack(expand=True, fill=tk.BOTH)
+
+        photo_url = product_info.get('photo_url')
+        self.load_card_image(image_label, photo_url if photo_url else 'images/picture.png')
+
+        info_container = tk.Frame(card_frame, bg=COLOR_SECONDARY_BG, padx=10)
+        info_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        category_name = product_info.get('category_name', 'Не указано')
+        title_label = tk.Label(
+            info_container, 
+            text=f"{category_name} | {product_name}",
+            font=(FONT_MAIN[0], 12, "bold"),
             bg=COLOR_SECONDARY_BG,
-            fg=COLOR_TEXT,
-            wraplength=self.card_width - 20,
-            justify=tk.CENTER
+            anchor="w"
         )
-        name_label.pack()
-        
-        price_text = f"{price:.0f} руб."
-        if discount and discount > 0:
-            price_text = f"{price * (1 - discount/100):.0f} руб. (-{discount:.0f}%)"
-        
-        price_label = tk.Label(
-            info_frame,
-            text=price_text,
-            font=FONT_HEADER,
-            bg=COLOR_SECONDARY_BG,
-            fg="#000000"
-        )
-        price_label.pack()
-        
-        quantity_text = f"В наличии: {quantity} шт."
-        if quantity == 0:
-            quantity_text = "Нет в наличии"
-        
-        quantity_label = tk.Label(
-            info_frame,
-            text=quantity_text,
-            font=FONT_MAIN,
-            bg=COLOR_SECONDARY_BG,
-            fg=COLOR_TEXT
-        )
-        quantity_label.pack()
-        
-        card_frame.bind("<Button-1>", lambda e, pid=product_id: self.on_card_click(pid))
-        image_label.bind("<Button-1>", lambda e, pid=product_id: self.on_card_click(pid))
-        info_frame.bind("<Button-1>", lambda e, pid=product_id: self.on_card_click(pid))
-        name_label.bind("<Button-1>", lambda e, pid=product_id: self.on_card_click(pid))
-        price_label.bind("<Button-1>", lambda e, pid=product_id: self.on_card_click(pid))
-        quantity_label.bind("<Button-1>", lambda e, pid=product_id: self.on_card_click(pid))
-        
-        for widget in card_frame.winfo_children():
+        title_label.pack(fill=tk.X, pady=(5, 2))
+
+        details = [
+            f"Описание товара: {product_info.get('description', '—')}",
+            f"Производитель: {product_info.get('manufacturer_name', 'Не указано')}",
+            f"Поставщик: {product_info.get('supplier_name', 'Не указано')}",
+            f"Цена: {price:.2f} руб.",
+            f"Единица измерения: {product_info.get('unit', 'шт.')}",
+            f"Количество на складе: {quantity}"
+        ]
+
+        for text in details:
+            lbl = tk.Label(
+                info_container, 
+                text=text, 
+                font=FONT_MAIN, 
+                bg=COLOR_SECONDARY_BG, 
+                anchor="w",
+                wraplength=400
+            )
+            lbl.pack(fill=tk.X)
+
+        discount_container = tk.Frame(card_frame, bg=COLOR_SECONDARY_BG, width=160, relief=tk.SOLID, borderwidth=1)
+        discount_container.pack(side=tk.RIGHT, fill=tk.BOTH, padx=5, pady=5)
+        discount_container.pack_propagate(False)
+
+        discount_text = f"{discount}%" if discount and discount > 0 else "Нет"
+        tk.Label(
+            discount_container, 
+            text="Действующая\nскидка", 
+            font=FONT_MAIN, 
+            bg=COLOR_SECONDARY_BG
+        ).pack(expand=True, side=tk.TOP, pady=(10,0))
+
+        tk.Label(
+            discount_container, 
+            text=discount_text, 
+            font=(FONT_MAIN[0], 16, "bold"), 
+            bg=COLOR_SECONDARY_BG
+        ).pack(expand=True, side=tk.TOP)
+
+        for widget in [card_frame, info_container, photo_container, image_label, title_label]:
             widget.bind("<Button-1>", lambda e, pid=product_id: self.on_card_click(pid))
-        
+
+        if not hasattr(self, 'product_cards_list'): self.product_cards_list = []
+        self.product_cards_list.append(card_frame)
+
         return card_frame
     
     
@@ -633,7 +642,7 @@ class App(tk.Tk):
         rows = self.db.get_all_products()
         
         for i, row in enumerate(rows):
-            product_id, product_name, price, quantity, discount = row
+            product_id, product_name, price, quantity, discount = row[0:5]
             row_idx = i // self.cards_per_row
             col_idx = i % self.cards_per_row
             
@@ -677,7 +686,7 @@ class App(tk.Tk):
         self.product_cards.clear()
         
         for i, row in enumerate(rows):
-            product_id, product_name, price, quantity, discount = row
+            product_id, product_name, price, quantity, discount = row[0:5]
             row_idx = i // self.cards_per_row
             col_idx = i % self.cards_per_row
             
@@ -723,7 +732,7 @@ class App(tk.Tk):
         self.product_cards.clear()
         
         for i, row in enumerate(rows):
-            product_id, product_name, price, quantity, discount = row
+            product_id, product_name, price, quantity, discount = row[0:5]
             row_idx = i // self.cards_per_row
             col_idx = i % self.cards_per_row
             
@@ -739,7 +748,10 @@ class App(tk.Tk):
     
     
     def show_orders(self):
-        OrdersWindow(self, self.db, self.role)
+        if self.role in ["Менеджер", "Администратор"]:
+            OrdersListWindow(self, self.db, self.role)
+        else:
+            messagebox.showinfo("Доступ", "У вас нет прав для просмотра заказов!")
     
     
     def open_add_window(self):
@@ -1229,6 +1241,716 @@ class OrdersWindow(tk.Toplevel):
         rows = self.db.get_orders()
         for row in rows:
             self.tree.insert('', tk.END, values=row)
+
+
+class OrdersListWindow(tk.Toplevel):
+    
+    def __init__(self, parent, db, role):
+        super().__init__(parent)
+        self.parent = parent
+        self.db = db
+        self.role = role
+        
+        self.title("Управление заказами")
+        self.geometry('1000x500+250+150')
+        self.configure(bg=COLOR_MAIN_BG)
+        
+        self.selected_order_id = None
+        
+        self.create_widgets()
+        self.load_orders()
+        self.apply_role_permissions()
+        self.grab_set()
+    
+    def create_widgets(self):
+        title_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
+        title_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(
+            title_frame,
+            text="Список заказов",
+            font=FONT_HEADER,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).pack(side=tk.LEFT)
+        
+        btn_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
+        btn_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        self.add_btn = tk.Button(
+            btn_frame,
+            text="Добавить заказ",
+            command=self.open_add_window,
+            bg=COLOR_ACCENT,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        )
+        self.add_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.edit_btn = tk.Button(
+            btn_frame,
+            text="Редактировать",
+            command=self.open_edit_window,
+            bg=COLOR_ACCENT,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        )
+        self.edit_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.delete_btn = tk.Button(
+            btn_frame,
+            text="Удалить",
+            command=self.delete_order,
+            bg=COLOR_ACCENT,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        )
+        self.delete_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.refresh_btn = tk.Button(
+            btn_frame,
+            text="Обновить",
+            command=self.load_orders,
+            bg=COLOR_ACCENT,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        )
+        self.refresh_btn.pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            btn_frame,
+            text="Закрыть",
+            command=self.destroy,
+            bg=COLOR_SECONDARY_BG,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        ).pack(side=tk.RIGHT, padx=5)
+        
+        tree_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        columns = ('id', 'date_create', 'date_delivery', 'get_code', 'status', 'username', 'address')
+        
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=15)
+        
+        self.tree.heading('id', text='ID')
+        self.tree.heading('date_create', text='Дата заказа')
+        self.tree.heading('date_delivery', text='Дата доставки')
+        self.tree.heading('get_code', text='Код получения')
+        self.tree.heading('status', text='Статус')
+        self.tree.heading('username', text='Клиент')
+        self.tree.heading('address', text='Адрес')
+        
+        self.tree.column('id', width=40, anchor='center')
+        self.tree.column('date_create', width=100, anchor='center')
+        self.tree.column('date_delivery', width=100, anchor='center')
+        self.tree.column('get_code', width=80, anchor='center')
+        self.tree.column('status', width=100, anchor='center')
+        self.tree.column('username', width=120, anchor='center')
+        self.tree.column('address', width=250, anchor='w')
+        
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.bind('<Double-1>', lambda e: self.open_edit_window())
+        
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    def apply_role_permissions(self):
+        if self.role != "Администратор":
+            self.add_btn.config(state=tk.DISABLED)
+            self.edit_btn.config(state=tk.DISABLED)
+            self.delete_btn.config(state=tk.DISABLED)
+    
+    def load_orders(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        rows = self.db.get_all_orders()
+        
+        for row in rows:
+            address = f"{row[8] if len(row) > 8 else ''} {row[7] if len(row) > 7 else ''}".strip()
+            values = (
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                row[4],
+                row[5],
+                address
+            )
+            self.tree.insert('', tk.END, values=values, iid=row[0])
+    
+    def get_selected_order_id(self):
+        selection = self.tree.selection()
+        if selection:
+            return int(selection[0])
+        return None
+    
+    def open_add_window(self):
+        if self.role != "Администратор":
+            messagebox.showinfo("Доступ", "Только администратор может добавлять заказы!")
+            return
+        AddOrderWindow(self, self.db)
+    
+    def open_edit_window(self):
+        if self.role != "Администратор":
+            messagebox.showinfo("Доступ", "Только администратор может редактировать заказы!")
+            return
+        
+        order_id = self.get_selected_order_id()
+        if not order_id:
+            messagebox.showinfo("Информация", "Выберите заказ для редактирования!")
+            return
+        
+        EditOrderWindow(self, self.db, order_id)
+    
+    def delete_order(self):
+        if self.role != "Администратор":
+            messagebox.showinfo("Доступ", "Только администратор может удалять заказы!")
+            return
+        
+        order_id = self.get_selected_order_id()
+        if not order_id:
+            messagebox.showinfo("Информация", "Выберите заказ для удаления!")
+            return
+        
+        if messagebox.askyesno("Подтверждение", "Вы уверены, что хотите удалить этот заказ?"):
+            if self.db.delete_order(order_id):
+                messagebox.showinfo("Успех", "Заказ успешно удален!")
+                self.load_orders()
+            else:
+                messagebox.showerror("Ошибка", "Не удалось удалить заказ!")
+
+class AddOrderWindow(tk.Toplevel):
+    
+    def __init__(self, parent, db):
+        super().__init__(parent)
+        self.parent = parent
+        self.db = db
+        
+        self.title("Добавить заказ")
+        self.geometry('800x700+400+50')
+        self.resizable(False, False)
+        self.configure(bg=COLOR_MAIN_BG)
+        
+        self.create_widgets()
+        self.load_dropdown_data()
+        self.grab_set()
+    
+    def create_widgets(self):
+        tk.Label(
+            self,
+            text="Добавление нового заказа",
+            font=FONT_HEADER,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).pack(pady=15)
+
+        main_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        
+        tk.Label(
+            main_frame,
+            text="Информация о заказе",
+            font=(FONT_MAIN[0], 11, "bold"),
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
+        
+        fields = [
+            ("Дата заказа (ГГГГ-ММ-ДД):", 1),
+            ("Дата доставки (ГГГГ-ММ-ДД):", 2),
+            ("Код получения:", 3),
+            ("Статус заказа:", 4),
+            ("Клиент:", 5),
+            ("Адрес:", 6)
+        ]
+        
+        self.entries = {}
+        self.comboboxes = {}
+        
+        for label_text, row in fields:
+            tk.Label(
+                main_frame,
+                text=label_text,
+                font=FONT_MAIN,
+                bg=COLOR_MAIN_BG,
+                fg=COLOR_TEXT
+            ).grid(row=row, column=0, padx=5, pady=8, sticky='e')
+            
+            if "Статус" in label_text or "Клиент" in label_text or "Адрес" in label_text:
+                var = tk.StringVar()
+                combobox = ttk.Combobox(
+                    main_frame,
+                    textvariable=var,
+                    width=30,
+                    state="readonly"
+                )
+                combobox.grid(row=row, column=1, padx=5, pady=8, sticky='w')
+                self.comboboxes[label_text] = {'combobox': combobox, 'var': var}
+            else:
+                entry = tk.Entry(main_frame, font=FONT_MAIN, width=33)
+                entry.grid(row=row, column=1, padx=5, pady=8, sticky='w')
+                self.entries[label_text] = entry
+        
+        tk.Label(
+            main_frame,
+            text="Товары в заказе",
+            font=(FONT_MAIN[0], 11, "bold"),
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=7, column=0, columnspan=2, pady=(20, 10), sticky='w')
+        
+        tk.Label(
+            main_frame,
+            text="Артикул товара 1:",
+            font=FONT_MAIN,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=8, column=0, padx=5, pady=8, sticky='e')
+        
+        self.article1_var = tk.StringVar()
+        self.article1_combo = ttk.Combobox(
+            main_frame,
+            textvariable=self.article1_var,
+            width=20,
+            state="readonly"
+        )
+        self.article1_combo.grid(row=8, column=1, padx=5, pady=8, sticky='w')
+        
+        tk.Label(
+            main_frame,
+            text="Количество:",
+            font=FONT_MAIN,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=8, column=2, padx=5, pady=8, sticky='e')
+        
+        self.quantity1_entry = tk.Entry(main_frame, font=FONT_MAIN, width=10)
+        self.quantity1_entry.grid(row=8, column=3, padx=5, pady=8, sticky='w')
+        self.quantity1_entry.insert(0, "1")
+        
+        tk.Label(
+            main_frame,
+            text="Артикул товара 2:",
+            font=FONT_MAIN,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=9, column=0, padx=5, pady=8, sticky='e')
+        
+        self.article2_var = tk.StringVar()
+        self.article2_combo = ttk.Combobox(
+            main_frame,
+            textvariable=self.article2_var,
+            width=20,
+            state="readonly"
+        )
+        self.article2_combo.grid(row=9, column=1, padx=5, pady=8, sticky='w')
+        
+        tk.Label(
+            main_frame,
+            text="Количество:",
+            font=FONT_MAIN,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=9, column=2, padx=5, pady=8, sticky='e')
+        
+        self.quantity2_entry = tk.Entry(main_frame, font=FONT_MAIN, width=10)
+        self.quantity2_entry.grid(row=9, column=3, padx=5, pady=8, sticky='w')
+        self.quantity2_entry.insert(0, "1")
+        
+        btn_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
+        btn_frame.pack(pady=20)
+        
+        tk.Button(
+            btn_frame,
+            text="Сохранить",
+            command=self.save_order,
+            bg=COLOR_ACCENT,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            btn_frame,
+            text="Отмена",
+            command=self.destroy,
+            bg=COLOR_SECONDARY_BG,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        ).pack(side=tk.LEFT, padx=5)
+    
+    def load_dropdown_data(self):
+        statuses = self.db.get_order_statuses()
+        status_values = [f"{s[0]} - {s[1]}" for s in statuses]
+        self.comboboxes["Статус заказа:"]['combobox']['values'] = status_values
+        if status_values:
+            self.comboboxes["Статус заказа:"]['combobox'].current(0)
+
+        users = self.db.get_users()
+        user_values = [f"{u[0]} - {u[2] or u[1]}" for u in users]
+        self.comboboxes["Клиент:"]['combobox']['values'] = user_values
+        if user_values:
+            self.comboboxes["Клиент:"]['combobox'].current(0)
+        
+        addresses = self.db.get_addresses()
+        address_values = [f"{a[0]} - {a[2]}, {a[1]}" for a in addresses]
+        self.comboboxes["Адрес:"]['combobox']['values'] = address_values
+        if address_values:
+            self.comboboxes["Адрес:"]['combobox'].current(0)
+
+        articles = self.db.get_articles()
+        article_values = [f"{a[0]} - {a[1]}" for a in articles]
+        self.article1_combo['values'] = article_values
+        self.article2_combo['values'] = article_values
+
+        from datetime import date
+        today = date.today().isoformat()
+        if "Дата заказа (ГГГГ-ММ-ДД):" in self.entries:
+            self.entries["Дата заказа (ГГГГ-ММ-ДД):"].insert(0, today)
+
+        from datetime import timedelta
+        delivery_date = (date.today() + timedelta(days=7)).isoformat()
+        if "Дата доставки (ГГГГ-ММ-ДД):" in self.entries:
+            self.entries["Дата доставки (ГГГГ-ММ-ДД):"].insert(0, delivery_date)
+
+        import random
+        if "Код получения:" in self.entries:
+            self.entries["Код получения:"].insert(0, str(random.randint(100, 999)))
+    
+    def save_order(self):
+        try:
+            date_create = self.entries["Дата заказа (ГГГГ-ММ-ДД):"].get().strip()
+            date_delivery = self.entries["Дата доставки (ГГГГ-ММ-ДД):"].get().strip()
+            get_code = self.entries["Код получения:"].get().strip()
+            
+            status_text = self.comboboxes["Статус заказа:"]['var'].get()
+            user_text = self.comboboxes["Клиент:"]['var'].get()
+            address_text = self.comboboxes["Адрес:"]['var'].get()
+            
+            article1_text = self.article1_var.get()
+            article2_text = self.article2_var.get()
+            quantity1 = self.quantity1_entry.get().strip()
+            quantity2 = self.quantity2_entry.get().strip()
+            
+            if not all([date_create, date_delivery, get_code, status_text, user_text, address_text]):
+                messagebox.showerror("Ошибка", "Заполните все обязательные поля!")
+                return
+            
+            status_id = int(status_text.split(' - ')[0])
+            user_id = int(user_text.split(' - ')[0])
+            address_id = int(address_text.split(' - ')[0])
+            
+            article_name1 = article1_text.split(' - ')[0] if article1_text else ''
+            article_name2 = article2_text.split(' - ')[0] if article2_text else ''
+            
+            try:
+                article_quantity1 = int(quantity1) if quantity1 else 0
+                article_quantity2 = int(quantity2) if quantity2 else 0
+            except ValueError:
+                messagebox.showerror("Ошибка", "Количество товаров должно быть числом!")
+                return
+
+            try:
+                get_code = int(get_code)
+            except ValueError:
+                messagebox.showerror("Ошибка", "Код получения должен быть числом!")
+                return
+            
+            if self.db.add_order(date_create, date_delivery, address_id, user_id, get_code, status_id,
+                                article_name1, article_quantity1, article_name2, article_quantity2):
+                messagebox.showinfo("Успех", "Заказ успешно добавлен!")
+                self.parent.load_orders()
+                self.destroy()
+            else:
+                messagebox.showerror("Ошибка", "Не удалось добавить заказ!")
+        
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Произошла ошибка: {str(e)}")
+
+
+class EditOrderWindow(tk.Toplevel):
+    
+    def __init__(self, parent, db, order_id):
+        super().__init__(parent)
+        self.parent = parent
+        self.db = db
+        self.order_id = order_id
+        
+        self.title("Редактировать заказ")
+        self.geometry('800x700+400+50')
+        self.resizable(False, False)
+        self.configure(bg=COLOR_MAIN_BG)
+        
+        self.order_info = self.db.get_order_by_id(order_id)
+        self.create_widgets()
+        self.load_dropdown_data()
+        self.load_order_data()
+        self.grab_set()
+    
+    def create_widgets(self):
+        tk.Label(
+            self,
+            text=f"Редактирование заказа №{self.order_id}",
+            font=FONT_HEADER,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).pack(pady=15)
+        
+        main_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+        
+        tk.Label(
+            main_frame,
+            text="Информация о заказе",
+            font=(FONT_MAIN[0], 11, "bold"),
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=0, column=0, columnspan=2, pady=10, sticky='w')
+        
+        fields = [
+            ("Дата заказа (ГГГГ-ММ-ДД):", 1),
+            ("Дата доставки (ГГГГ-ММ-ДД):", 2),
+            ("Код получения:", 3),
+            ("Статус заказа:", 4),
+            ("Клиент:", 5),
+            ("Адрес:", 6)
+        ]
+        
+        self.entries = {}
+        self.comboboxes = {}
+        
+        for label_text, row in fields:
+            tk.Label(
+                main_frame,
+                text=label_text,
+                font=FONT_MAIN,
+                bg=COLOR_MAIN_BG,
+                fg=COLOR_TEXT
+            ).grid(row=row, column=0, padx=5, pady=8, sticky='e')
+            
+            if "Статус" in label_text or "Клиент" in label_text or "Адрес" in label_text:
+                var = tk.StringVar()
+                combobox = ttk.Combobox(
+                    main_frame,
+                    textvariable=var,
+                    width=30,
+                    state="readonly"
+                )
+                combobox.grid(row=row, column=1, padx=5, pady=8, sticky='w')
+                self.comboboxes[label_text] = {'combobox': combobox, 'var': var}
+            else:
+                entry = tk.Entry(main_frame, font=FONT_MAIN, width=33)
+                entry.grid(row=row, column=1, padx=5, pady=8, sticky='w')
+                self.entries[label_text] = entry
+        
+        tk.Label(
+            main_frame,
+            text="Товары в заказе",
+            font=(FONT_MAIN[0], 11, "bold"),
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=7, column=0, columnspan=2, pady=(20, 10), sticky='w')
+        
+        tk.Label(
+            main_frame,
+            text="Артикул товара 1:",
+            font=FONT_MAIN,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=8, column=0, padx=5, pady=8, sticky='e')
+        
+        self.article1_var = tk.StringVar()
+        self.article1_combo = ttk.Combobox(
+            main_frame,
+            textvariable=self.article1_var,
+            width=20,
+            state="readonly"
+        )
+        self.article1_combo.grid(row=8, column=1, padx=5, pady=8, sticky='w')
+        
+        tk.Label(
+            main_frame,
+            text="Количество:",
+            font=FONT_MAIN,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=8, column=2, padx=5, pady=8, sticky='e')
+        
+        self.quantity1_entry = tk.Entry(main_frame, font=FONT_MAIN, width=10)
+        self.quantity1_entry.grid(row=8, column=3, padx=5, pady=8, sticky='w')
+
+        tk.Label(
+            main_frame,
+            text="Артикул товара 2:",
+            font=FONT_MAIN,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=9, column=0, padx=5, pady=8, sticky='e')
+        
+        self.article2_var = tk.StringVar()
+        self.article2_combo = ttk.Combobox(
+            main_frame,
+            textvariable=self.article2_var,
+            width=20,
+            state="readonly"
+        )
+        self.article2_combo.grid(row=9, column=1, padx=5, pady=8, sticky='w')
+        
+        tk.Label(
+            main_frame,
+            text="Количество:",
+            font=FONT_MAIN,
+            bg=COLOR_MAIN_BG,
+            fg=COLOR_TEXT
+        ).grid(row=9, column=2, padx=5, pady=8, sticky='e')
+        
+        self.quantity2_entry = tk.Entry(main_frame, font=FONT_MAIN, width=10)
+        self.quantity2_entry.grid(row=9, column=3, padx=5, pady=8, sticky='w')
+
+        btn_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
+        btn_frame.pack(pady=20)
+        
+        tk.Button(
+            btn_frame,
+            text="Сохранить",
+            command=self.save_order,
+            bg=COLOR_ACCENT,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            btn_frame,
+            text="Отмена",
+            command=self.destroy,
+            bg=COLOR_SECONDARY_BG,
+            fg=COLOR_TEXT,
+            font=FONT_BUTTON,
+            width=15
+        ).pack(side=tk.LEFT, padx=5)
+    
+    def load_dropdown_data(self):
+        statuses = self.db.get_order_statuses()
+        status_values = [f"{s[0]} - {s[1]}" for s in statuses]
+        self.comboboxes["Статус заказа:"]['combobox']['values'] = status_values
+        
+        users = self.db.get_users()
+        user_values = [f"{u[0]} - {u[2] or u[1]}" for u in users]
+        self.comboboxes["Клиент:"]['combobox']['values'] = user_values
+        
+        addresses = self.db.get_addresses()
+        address_values = [f"{a[0]} - {a[2]}, {a[1]}" for a in addresses]
+        self.comboboxes["Адрес:"]['combobox']['values'] = address_values
+        
+        articles = self.db.get_articles()
+        article_values = [f"{a[0]} - {a[1]}" for a in articles]
+        self.article1_combo['values'] = article_values
+        self.article2_combo['values'] = article_values
+    
+    def load_order_data(self):
+        if not self.order_info:
+            return
+        
+        if "Дата заказа (ГГГГ-ММ-ДД):" in self.entries:
+            self.entries["Дата заказа (ГГГГ-ММ-ДД):"].insert(0, self.order_info['date_create'])
+        
+        if "Дата доставки (ГГГГ-ММ-ДД):" in self.entries:
+            self.entries["Дата доставки (ГГГГ-ММ-ДД):"].insert(0, self.order_info['date_delivery'])
+        
+        if "Код получения:" in self.entries:
+            self.entries["Код получения:"].insert(0, str(self.order_info['get_code']))
+
+        if self.order_info['status']:
+            status_value = f"{self.order_info['status_id']} - {self.order_info['status']}"
+            self.comboboxes["Статус заказа:"]['var'].set(status_value)
+        
+        if self.order_info['user_id'] and self.order_info['client_name']:
+            user_value = f"{self.order_info['user_id']} - {self.order_info['client_name']}"
+            self.comboboxes["Клиент:"]['var'].set(user_value)
+        
+        if self.order_info['address_id'] and self.order_info['address']:
+            address_value = f"{self.order_info['address_id']} - {self.order_info['address_index']}, {self.order_info['address']}"
+            self.comboboxes["Адрес:"]['var'].set(address_value)
+        
+        if self.order_info['article_name1']:
+            article1_value = f"{self.order_info['article_name1']}"
+            for item in self.article1_combo['values']:
+                if item.startswith(self.order_info['article_name1']):
+                    article1_value = item
+                    break
+            self.article1_var.set(article1_value)
+            self.quantity1_entry.insert(0, str(self.order_info['article_quantity1'] or 1))
+        
+        if self.order_info['article_name2']:
+            article2_value = f"{self.order_info['article_name2']}"
+            for item in self.article2_combo['values']:
+                if item.startswith(self.order_info['article_name2']):
+                    article2_value = item
+                    break
+            self.article2_var.set(article2_value)
+            self.quantity2_entry.insert(0, str(self.order_info['article_quantity2'] or 1))
+    
+    def save_order(self):
+        try:
+            date_create = self.entries["Дата заказа (ГГГГ-ММ-ДД):"].get().strip()
+            date_delivery = self.entries["Дата доставки (ГГГГ-ММ-ДД):"].get().strip()
+            get_code = self.entries["Код получения:"].get().strip()
+            
+            status_text = self.comboboxes["Статус заказа:"]['var'].get()
+            user_text = self.comboboxes["Клиент:"]['var'].get()
+            address_text = self.comboboxes["Адрес:"]['var'].get()
+            
+            article1_text = self.article1_var.get()
+            article2_text = self.article2_var.get()
+            quantity1 = self.quantity1_entry.get().strip()
+            quantity2 = self.quantity2_entry.get().strip()
+
+            if not all([date_create, date_delivery, get_code, status_text, user_text, address_text]):
+                messagebox.showerror("Ошибка", "Заполните все обязательные поля!")
+                return
+            
+            status_id = int(status_text.split(' - ')[0])
+            user_id = int(user_text.split(' - ')[0])
+            address_id = int(address_text.split(' - ')[0])
+            
+            article_name1 = article1_text.split(' - ')[0] if article1_text else ''
+            article_name2 = article2_text.split(' - ')[0] if article2_text else ''
+            
+            try:
+                article_quantity1 = int(quantity1) if quantity1 else 0
+                article_quantity2 = int(quantity2) if quantity2 else 0
+            except ValueError:
+                messagebox.showerror("Ошибка", "Количество товаров должно быть числом!")
+                return
+
+            try:
+                get_code = int(get_code)
+            except ValueError:
+                messagebox.showerror("Ошибка", "Код получения должен быть числом!")
+                return
+
+            if self.db.update_order(self.order_id, date_create, date_delivery, address_id, user_id, 
+                                   get_code, status_id, article_name1, article_quantity1, 
+                                   article_name2, article_quantity2, self.order_info['articles_id']):
+                messagebox.showinfo("Успех", "Заказ успешно обновлен!")
+                self.parent.load_orders()
+                self.destroy()
+            else:
+                messagebox.showerror("Ошибка", "Не удалось обновить заказ!")
+        
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Произошла ошибка: {str(e)}")
 
 
 class ConfigWindow(tk.Toplevel):
