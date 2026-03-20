@@ -793,17 +793,6 @@ class App(tk.Tk):
             else:
                 messagebox.showerror("Ошибка", "Не удалось удалить товар!")
     
-    
-    def add_order(self):
-        messagebox.showinfo("Информация", "Функция добавления заказа в разработке")
-    
-    
-    def edit_order(self):
-        messagebox.showinfo("Информация", "Функция редактирования заказа в разработке")
-    
-    
-    def delete_order(self):
-        messagebox.showinfo("Информация", "Функция удаления заказа в разработке")
 
 
 class LargeImageWindow(tk.Toplevel):
@@ -1244,7 +1233,6 @@ class OrdersWindow(tk.Toplevel):
 
 
 class OrdersListWindow(tk.Toplevel):
-    
     def __init__(self, parent, db, role):
         super().__init__(parent)
         self.parent = parent
@@ -1252,179 +1240,141 @@ class OrdersListWindow(tk.Toplevel):
         self.role = role
         
         self.title("Управление заказами")
-        self.geometry('1000x500+250+150')
+        self.geometry('900x600+250+100')
         self.configure(bg=COLOR_MAIN_BG)
         
         self.selected_order_id = None
-        
+        self.card_widgets = {}
+
         self.create_widgets()
         self.load_orders()
         self.apply_role_permissions()
         self.grab_set()
-    
+
     def create_widgets(self):
-        title_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
-        title_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        tk.Label(
-            title_frame,
-            text="Список заказов",
-            font=FONT_HEADER,
-            bg=COLOR_MAIN_BG,
-            fg=COLOR_TEXT
-        ).pack(side=tk.LEFT)
-        
         btn_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
-        btn_frame.pack(fill=tk.X, padx=10, pady=5)
+        btn_frame.pack(fill=tk.X, padx=20, pady=15)
         
-        self.add_btn = tk.Button(
-            btn_frame,
-            text="Добавить заказ",
-            command=self.open_add_window,
-            bg=COLOR_ACCENT,
-            fg=COLOR_TEXT,
-            font=FONT_BUTTON,
-            width=15
-        )
+        self.add_btn = tk.Button(btn_frame, text="Добавить", command=self.open_add_window, 
+                                 bg=COLOR_ACCENT, fg=COLOR_TEXT, font=FONT_BUTTON, width=12)
         self.add_btn.pack(side=tk.LEFT, padx=5)
         
-        self.edit_btn = tk.Button(
-            btn_frame,
-            text="Редактировать",
-            command=self.open_edit_window,
-            bg=COLOR_ACCENT,
-            fg=COLOR_TEXT,
-            font=FONT_BUTTON,
-            width=15
-        )
+        self.edit_btn = tk.Button(btn_frame, text="Изменить", command=self.open_edit_window, 
+                                  bg=COLOR_ACCENT, fg=COLOR_TEXT, font=FONT_BUTTON, width=12)
         self.edit_btn.pack(side=tk.LEFT, padx=5)
         
-        self.delete_btn = tk.Button(
-            btn_frame,
-            text="Удалить",
-            command=self.delete_order,
-            bg=COLOR_ACCENT,
-            fg=COLOR_TEXT,
-            font=FONT_BUTTON,
-            width=15
-        )
+        self.delete_btn = tk.Button(btn_frame, text="Удалить", command=self.delete_order, 
+                                    bg=COLOR_ACCENT, fg=COLOR_TEXT, font=FONT_BUTTON, width=12)
         self.delete_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.refresh_btn = tk.Button(
-            btn_frame,
-            text="Обновить",
-            command=self.load_orders,
-            bg=COLOR_ACCENT,
-            fg=COLOR_TEXT,
-            font=FONT_BUTTON,
-            width=15
-        )
-        self.refresh_btn.pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(
-            btn_frame,
-            text="Закрыть",
-            command=self.destroy,
-            bg=COLOR_SECONDARY_BG,
-            fg=COLOR_TEXT,
-            font=FONT_BUTTON,
-            width=15
-        ).pack(side=tk.RIGHT, padx=5)
-        
-        tree_frame = tk.Frame(self, bg=COLOR_MAIN_BG)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        columns = ('id', 'date_create', 'date_delivery', 'get_code', 'status', 'username', 'address')
+        tk.Button(btn_frame, text="Закрыть", command=self.destroy, 
+                  bg=COLOR_SECONDARY_BG, fg=COLOR_TEXT, font=FONT_BUTTON, width=12).pack(side=tk.RIGHT, padx=5)
+
+        container = tk.Frame(self, bg=COLOR_MAIN_BG)
+        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+
+        self.canvas = tk.Canvas(container, bg=COLOR_MAIN_BG, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(container, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=COLOR_MAIN_BG)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+
+        self.canvas_frame = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         
-        self.tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=15)
+        self.canvas.bind('<Configure>', self._on_canvas_configure)
         
-        self.tree.heading('id', text='ID')
-        self.tree.heading('date_create', text='Дата заказа')
-        self.tree.heading('date_delivery', text='Дата доставки')
-        self.tree.heading('get_code', text='Код получения')
-        self.tree.heading('status', text='Статус')
-        self.tree.heading('username', text='Клиент')
-        self.tree.heading('address', text='Адрес')
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfig(self.canvas_frame, width=event.width)
+
+    def select_card(self, order_id):
+        if self.selected_order_id in self.card_widgets:
+            self.card_widgets[self.selected_order_id].configure(highlightbackground="black", highlightthickness=1)
         
-        self.tree.column('id', width=40, anchor='center')
-        self.tree.column('date_create', width=100, anchor='center')
-        self.tree.column('date_delivery', width=100, anchor='center')
-        self.tree.column('get_code', width=80, anchor='center')
-        self.tree.column('status', width=100, anchor='center')
-        self.tree.column('username', width=120, anchor='center')
-        self.tree.column('address', width=250, anchor='w')
+        self.selected_order_id = order_id
+        if order_id in self.card_widgets:
+            self.card_widgets[order_id].configure(highlightbackground="#0078d7", highlightthickness=3)
+
+    def load_orders(self):
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+        self.card_widgets = {}
+
+        rows = self.db.get_all_orders()
         
-        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.tree.bind('<Double-1>', lambda e: self.open_edit_window())
-        
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    
+        for row in rows:
+            order_id = row[0]
+            address_str = f"{row[8] if len(row) > 8 else ''}, {row[7] if len(row) > 7 else ''}".strip(", ")
+            
+            card = tk.Frame(self.scrollable_frame, bg="white", highlightbackground="black", 
+                            highlightthickness=1, padx=10, pady=10)
+            card.pack(fill=tk.X, pady=8, padx=5)
+            self.card_widgets[order_id] = card
+            
+            card.bind("<Button-1>", lambda e, oid=order_id: self.select_card(oid))
+
+            info_frame = tk.Frame(card, bg="white", borderwidth=1, relief="solid", padx=10, pady=5)
+            info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 15))
+
+            for sub_w in [info_frame]: 
+                sub_w.bind("<Button-1>", lambda e, oid=order_id: self.select_card(oid))
+
+            tk.Label(info_frame, text=f"Артикул заказа: {row[0]}", font=("Arial", 10, "bold"), bg="white").pack(anchor="w")
+            tk.Label(info_frame, text=f"Статус заказа: {row[4]}", bg="white").pack(anchor="w")
+            tk.Label(info_frame, text=f"Адрес пункта выдачи: {address_str}", bg="white", wraplength=450, justify="left").pack(anchor="w")
+            tk.Label(info_frame, text=f"Дата заказа: {row[1]}", bg="white").pack(anchor="w")
+
+            delivery_frame = tk.Frame(card, bg="white", borderwidth=1, relief="solid", width=180, height=90)
+            delivery_frame.pack(side=tk.RIGHT, fill=tk.Y)
+            delivery_frame.pack_propagate(False)
+            
+            tk.Label(delivery_frame, text="Дата доставки", bg="white", font=("Arial", 9, "italic")).pack(pady=(10, 0))
+            tk.Label(delivery_frame, text=str(row[2]), bg="white", font=("Arial", 11, "bold")).pack(expand=True)
+
     def apply_role_permissions(self):
         if self.role != "Администратор":
             self.add_btn.config(state=tk.DISABLED)
             self.edit_btn.config(state=tk.DISABLED)
             self.delete_btn.config(state=tk.DISABLED)
-    
-    def load_orders(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        
-        rows = self.db.get_all_orders()
-        
-        for row in rows:
-            address = f"{row[8] if len(row) > 8 else ''} {row[7] if len(row) > 7 else ''}".strip()
-            values = (
-                row[0],
-                row[1],
-                row[2],
-                row[3],
-                row[4],
-                row[5],
-                address
-            )
-            self.tree.insert('', tk.END, values=values, iid=row[0])
-    
-    def get_selected_order_id(self):
-        selection = self.tree.selection()
-        if selection:
-            return int(selection[0])
-        return None
-    
+
     def open_add_window(self):
         if self.role != "Администратор":
-            messagebox.showinfo("Доступ", "Только администратор может добавлять заказы!")
+            messagebox.showinfo("Доступ", "У вас нет прав для добавления заказов!")
             return
         AddOrderWindow(self, self.db)
-    
+
     def open_edit_window(self):
         if self.role != "Администратор":
-            messagebox.showinfo("Доступ", "Только администратор может редактировать заказы!")
+            messagebox.showinfo("Доступ", "У вас нет прав для редактирования заказов!")
             return
         
-        order_id = self.get_selected_order_id()
-        if not order_id:
+        if not self.selected_order_id:
             messagebox.showinfo("Информация", "Выберите заказ для редактирования!")
             return
         
-        EditOrderWindow(self, self.db, order_id)
-    
+        EditOrderWindow(self, self.db, self.selected_order_id)
+
     def delete_order(self):
         if self.role != "Администратор":
-            messagebox.showinfo("Доступ", "Только администратор может удалять заказы!")
+            messagebox.showinfo("Доступ", "У вас нет прав для удаления заказов!")
             return
         
-        order_id = self.get_selected_order_id()
-        if not order_id:
+        if not self.selected_order_id:
             messagebox.showinfo("Информация", "Выберите заказ для удаления!")
             return
         
         if messagebox.askyesno("Подтверждение", "Вы уверены, что хотите удалить этот заказ?"):
-            if self.db.delete_order(order_id):
+            if self.db.delete_order(self.selected_order_id):
                 messagebox.showinfo("Успех", "Заказ успешно удален!")
                 self.load_orders()
+                self.selected_order_id = None
             else:
                 messagebox.showerror("Ошибка", "Не удалось удалить заказ!")
 
